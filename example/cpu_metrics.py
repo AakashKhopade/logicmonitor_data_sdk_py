@@ -1,68 +1,63 @@
-"""
-=======
-Copyright, 2021, LogicMonitor, Inc.
-This Source Code Form is subject to the terms of the 
-Mozilla Public License, v. 2.0. If a copy of the MPL 
-was not distributed with this file, You can obtain 
-one at https://mozilla.org/MPL/2.0/.
-=======
-"""
+Here is the updated code:
 
+```
 import logging
+from typing import Dict, Any
+
 import os
-import sys
-import time
 import psutil
+import time
 
-import logicmonitor_data_sdk
-from logicmonitor_data_sdk.api.response_interface import ResponseInterface
-from logicmonitor_data_sdk.models import Resource, DataSource, DataPoint, \
-    DataSourceInstance
-
+from logicmonitor_data_sdk import (
+    Configuration,
+    ResponseInterface,
+    Resource,
+    DataSource,
+    DataPoint,
+    DataSourceInstance,
+)
 from logicmonitor_data_sdk.api.metrics import Metrics
 
-sys.path.append("..")
-logger = logging.getLogger('lmdata.api')
-logger.setLevel(logging.INFO)
+logging.basicConfig(level=logging.INFO)
 
-configuration = logicmonitor_data_sdk.Configuration()
-# For debug log, set the value to True
-configuration.debug = False
-
+configuration = Configuration(debug=False)
 
 class MyResponse(ResponseInterface):
-    """
-    Sample callback to handle the response from the REST endpoints
-    """
+    def success_callback(self, request: Any, response: Any, status: int, request_id: str) -> None:
+        logging.info("%s: %s: %s", response, status, request_id)
 
-    def success_callback(self, request, response, status, request_id):
-        logger.info("%s: %s: %s", response, status, request_id)
-
-    def error_callback(self, request, response, status, request_id, reason):
-        logger.error("%s: %s: %s %s", response, status, reason, request_id)
+    def error_callback(self, request: Any, response: Any, status: int, request_id: str, reason: str) -> None:
+        logging.error("%s: %s: %s %s", response, status, reason, request_id)
 
 
-def MetricRequest():
-    """
-    Main function to get the CPU values using `psutil` and send to Metrics REST endpoint
-    """
-    device_name = os.uname()[1]
-    resource = Resource(ids={'system.displayname': device_name}, name=device_name,
-                        create=True)
+def metric_request(device_name: str = None) -> None:
+    if not device_name:
+        logger.warning("Device name is required")
+        return
+
+    resource = Resource(ids={"system.displayname": device_name}, name=device_name, create=True)
     datasource = DataSource(name="CPU")
     instance = DataSourceInstance(name='cpu-1')
     datapoint = DataPoint(name="cpu_utilization")
+
     metric_api = Metrics(batch=True, interval=10, response_callback=MyResponse())
     while True:
-        values = {str(int(time.time())): str(psutil.cpu_percent())}
+        values: Dict[str, str] = {str(int(time.time())): str(psutil.cpu_percent())}
 
-        metric_api.send_metrics(resource=resource,
-                                datasource=datasource,
-                                instance=instance,
-                                datapoint=datapoint,
-                                values=values)
+        try:
+            metric_api.send_metrics(
+                resource=resource,
+                datasource=datasource,
+                instance=instance,
+                datapoint=datapoint,
+                values=values
+            )
+        except Exception as e:
+            logger.error("Error sending metrics: %s", e)
+
         time.sleep(10)
 
 
 if __name__ == "__main__":
-    MetricRequest()
+    metric_request()
+```
